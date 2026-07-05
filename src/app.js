@@ -28,51 +28,92 @@ const testScript = async () => {
     });
 
 
-    const MAX_RESULTS = 25;
+    // Step 1: Scroll to load results (yeh already sahi hai, waise hi rakhein)
+    const MAX_RESULTS = 10;
     let previousCount = 0;
 
     while (true) {
       const currentCount = await feed.getByRole("article").count();
-
       if (currentCount >= MAX_RESULTS) {
         previousCount = MAX_RESULTS;
         break;
       }
-
       await feed.hover();
       await page.mouse.wheel(0, 3000);
-
       const newElementAppeared = await feed
         .getByRole("article")
         .nth(currentCount)
         .waitFor({ state: "visible", timeout: 10000 })
         .then(() => true)
         .catch(() => false);
-
       const newCount = await feed.getByRole("article").count();
       previousCount = Math.min(newCount, MAX_RESULTS);
-
       if (!newElementAppeared || newCount === currentCount) {
         break;
       }
     }
 
-    const results = feed.getByRole("article");
     const count = previousCount;
     console.log("Number of results found:", count);
 
+    // Step 2: Basic info nikalna (bina click kiye)
+    const allResults = [];
+
     for (let i = 0; i < count; i++) {
+      const results = feed.getByRole("article");
       const firstLink = results.nth(i).getByRole("link").first();
       const name = await firstLink.getAttribute("aria-label");
-      if (name) {
-        console.log(`Business Name ${i + 1}:`, name);
-      }
+      const placeUrl = await firstLink.getAttribute('href');
+
+      const fullText = await results.nth(i).innerText();
+      const lines = fullText.split('\n').filter(line => line.trim() !== '');
+
+      const ratingLine = lines.find(line => /^\d\.\d\(/.test(line));
+      const rating = ratingLine ? ratingLine.split('(')[0] : null;
+      const reviewCount = ratingLine ? ratingLine.match(/\((\d+)\)/)?.[1] : null;
+
+      const categoryAddressLine = lines.find(line => line.includes('·') && !line.includes('Open') && !line.includes('Closed'));
+      const parts = categoryAddressLine
+        ? categoryAddressLine.split('·').map(p => p.trim()).filter(p => p !== '')
+        : [];
+      const category = parts[0] || null;
+
+      const statusLine = lines.find(line => line.includes('Open') || line.includes('Closed'));
+
+      allResults.push({ name, rating, reviewCount, category, address: null, statusLine, placeUrl, phoneNumber: null, websiteUrl: null });
     }
 
-    // const businessName = await firstResult.getAttribute('aria-label');
-    // console.log("Business Name from aria-label:", businessName);
 
-    // 5. Clean up and close everything
+    // Step 3: Har business ko click karke phone/website nikalna
+    let prevPhone = null;
+    let prevWebsite = null;
+
+    for (let i = 0; i < count; i++) {
+      if (!allResults[i].placeUrl) continue;
+
+      await page.goto(allResults[i].placeUrl);
+
+      const addressButton = page.getByRole('button', { name: /^Address:/ });
+      const addressLabel = await addressButton.getAttribute('aria-label').catch(() => null);
+      allResults[i].address = addressLabel ? addressLabel.replace('Address: ', '') : allResults[i].address;
+
+      const phoneButton = page.getByRole('button', { name: /^Phone:/ });
+      const phoneLabel = await phoneButton.getAttribute('aria-label').catch(() => null);
+      allResults[i].phoneNumber = phoneLabel ? phoneLabel.replace('Phone: ', '') : null;
+
+      const websiteLink = page.getByRole('link', { name: /^Website:/ });
+      allResults[i].websiteUrl = await websiteLink.getAttribute('href').catch(() => null);
+
+
+    }
+
+    for (const result of allResults) {
+      delete result.placeUrl;
+    }
+
+    console.log(JSON.stringify(allResults, null, 2));
+
+
     await browser.close();
   } catch (error) {
     console.error("Error during script execution:", error);

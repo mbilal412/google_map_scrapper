@@ -1,7 +1,13 @@
 import { chromium } from "playwright";
 import { expect } from "@playwright/test";
+import fs from "fs";
 
+const input = JSON.parse(fs.readFileSync("./src/input.json", "utf-8"));
+
+const searchQuery = input.searchQuery;
+const MAX_RESULTS = input.maxResults;
 const testScript = async () => {
+
   // 1. Launch the browser
   // Change channel to 'chromium' or remove it entirely to use Playwright's stock browser
   const browser = await chromium.launch({
@@ -18,7 +24,7 @@ const testScript = async () => {
     // 4. Navigate to your target website
     await page.goto("https://www.google.com/maps");
 
-    await page.fill('input[name="q"]', "dentist in islamabad");
+    await page.fill('input[name="q"]', searchQuery);
     await page.keyboard.press("Enter");
 
     const feed = page.getByRole("feed");
@@ -29,7 +35,6 @@ const testScript = async () => {
 
 
     // Step 1: Scroll to load results (yeh already sahi hai, waise hi rakhein)
-    const MAX_RESULTS = 10;
     let previousCount = 0;
 
     while (true) {
@@ -89,22 +94,23 @@ const testScript = async () => {
     let prevWebsite = null;
 
     for (let i = 0; i < count; i++) {
-      if (!allResults[i].placeUrl) continue;
+      try {
+        await page.goto(allResults[i].placeUrl);
 
-      await page.goto(allResults[i].placeUrl);
+        const phoneButton = page.getByRole('button', { name: /^Phone:/ });
+        const phoneLabel = await phoneButton.getAttribute('aria-label').catch(() => null);
+        allResults[i].phoneNumber = phoneLabel ? phoneLabel.replace('Phone: ', '') : null;
 
-      const addressButton = page.getByRole('button', { name: /^Address:/ });
-      const addressLabel = await addressButton.getAttribute('aria-label').catch(() => null);
-      allResults[i].address = addressLabel ? addressLabel.replace('Address: ', '') : allResults[i].address;
+        const websiteLink = page.getByRole('link', { name: /^Website:/ });
+        allResults[i].websiteUrl = await websiteLink.getAttribute('href').catch(() => null);
 
-      const phoneButton = page.getByRole('button', { name: /^Phone:/ });
-      const phoneLabel = await phoneButton.getAttribute('aria-label').catch(() => null);
-      allResults[i].phoneNumber = phoneLabel ? phoneLabel.replace('Phone: ', '') : null;
+        const addressButton = page.getByRole('button', { name: /^Address:/ });
+        const addressLabel = await addressButton.getAttribute('aria-label').catch(() => null);
+        allResults[i].address = addressLabel ? addressLabel.replace('Address: ', '') : allResults[i].address;
 
-      const websiteLink = page.getByRole('link', { name: /^Website:/ });
-      allResults[i].websiteUrl = await websiteLink.getAttribute('href').catch(() => null);
-
-
+      } catch (error) {
+        console.log(`Warning: result ${i} (${allResults[i].name}) ke liye detail extraction fail hui:`, error.message);
+      }
     }
 
     for (const result of allResults) {
@@ -115,6 +121,9 @@ const testScript = async () => {
 
 
     await browser.close();
+    fs.mkdirSync('output', { recursive: true });
+    fs.writeFileSync('output/results.json', JSON.stringify(allResults, null, 2));
+    console.log(`Data saved to output/results.json (${allResults.length} records)`);
   } catch (error) {
     console.error("Error during script execution:", error);
     await browser.close();

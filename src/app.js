@@ -85,8 +85,13 @@ const testScript = async () => {
 
       const statusLine = lines.find(line => line.includes('Open') || line.includes('Closed'));
 
+
       allResults.push({ name, rating, reviewCount, category, address: null, statusLine, placeUrl, phoneNumber: null, websiteUrl: null });
+
     }
+    const uniqueResults = Array.from(
+      new Map(allResults.map(item => [item.placeUrl, item])).values()
+    );
 
 
     // Step 3: Har business ko click karke phone/website nikalna
@@ -95,35 +100,37 @@ const testScript = async () => {
 
     for (let i = 0; i < count; i++) {
       try {
-        await page.goto(allResults[i].placeUrl);
+        await page.goto(uniqueResults[i].placeUrl);
 
         const phoneButton = page.getByRole('button', { name: /^Phone:/ });
         const phoneLabel = await phoneButton.getAttribute('aria-label').catch(() => null);
-        allResults[i].phoneNumber = phoneLabel ? phoneLabel.replace('Phone: ', '') : null;
+        uniqueResults[i].phoneNumber = phoneLabel ? phoneLabel.replace('Phone: ', '') : null;
 
         const websiteLink = page.getByRole('link', { name: /^Website:/ });
-        allResults[i].websiteUrl = await websiteLink.getAttribute('href').catch(() => null);
+        uniqueResults[i].websiteUrl = await websiteLink.getAttribute('href').catch(() => null);
 
         const addressButton = page.getByRole('button', { name: /^Address:/ });
         const addressLabel = await addressButton.getAttribute('aria-label').catch(() => null);
-        allResults[i].address = addressLabel ? addressLabel.replace('Address: ', '') : allResults[i].address;
+        uniqueResults[i].address = addressLabel ? addressLabel.replace('Address: ', '') : uniqueResults[i].address;
 
       } catch (error) {
-        console.log(`Warning: result ${i} (${allResults[i].name}) ke liye detail extraction fail hui:`, error.message);
+        console.log(`Warning: result ${i} (${uniqueResults[i].name})'s details could not be extracted:`, error.message);
       }
     }
 
-    for (const result of allResults) {
+
+
+    for (const result of uniqueResults) {
       delete result.placeUrl;
     }
 
-    console.log(JSON.stringify(allResults, null, 2));
+    console.log(JSON.stringify(uniqueResults, null, 2));
 
 
     await browser.close();
     fs.mkdirSync('output', { recursive: true });
-    fs.writeFileSync('output/results.json', JSON.stringify(allResults, null, 2));
-    console.log(`Data saved to output/results.json (${allResults.length} records)`);
+    fs.writeFileSync('output/results.json', JSON.stringify(uniqueResults, null, 2));
+    console.log(`Data saved to output/results.json (${uniqueResults.length} records)`);
   } catch (error) {
     console.error("Error during script execution:", error);
     await browser.close();

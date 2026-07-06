@@ -6,6 +6,11 @@ const input = JSON.parse(fs.readFileSync("./src/input.json", "utf-8"));
 
 const searchQuery = input.searchQuery;
 const MAX_RESULTS = input.maxResults;
+
+function delay(min, max) {
+  const randomDelay = Math.floor(Math.random() * (max - min + 1)) + min;
+  return new Promise(resolve => setTimeout(resolve, randomDelay));
+}
 const testScript = async () => {
 
   // 1. Launch the browser
@@ -43,6 +48,7 @@ const testScript = async () => {
         previousCount = MAX_RESULTS;
         break;
       }
+
       await feed.hover();
       await page.mouse.wheel(0, 3000);
       const newElementAppeared = await feed
@@ -103,15 +109,17 @@ const testScript = async () => {
         await page.goto(uniqueResults[i].placeUrl);
 
         const phoneButton = page.getByRole('button', { name: /^Phone:/ });
-        const phoneLabel = await phoneButton.getAttribute('aria-label').catch(() => null);
+        const phoneLabel = await phoneButton.getAttribute('aria-label', {timeout:4500}).catch(() => null);
         uniqueResults[i].phoneNumber = phoneLabel ? phoneLabel.replace('Phone: ', '') : null;
 
         const websiteLink = page.getByRole('link', { name: /^Website:/ });
-        uniqueResults[i].websiteUrl = await websiteLink.getAttribute('href').catch(() => null);
+        uniqueResults[i].websiteUrl = await websiteLink.getAttribute('href', {timeout:4500}).catch(() => null);
 
         const addressButton = page.getByRole('button', { name: /^Address:/ });
-        const addressLabel = await addressButton.getAttribute('aria-label').catch(() => null);
+        const addressLabel = await addressButton.getAttribute('aria-label', {timeout:4500}).catch(() => null);
         uniqueResults[i].address = addressLabel ? addressLabel.replace('Address: ', '') : uniqueResults[i].address;
+
+        await delay(2000, 5000);
 
       } catch (error) {
         console.log(`Warning: result ${i} (${uniqueResults[i].name})'s details could not be extracted:`, error.message);
